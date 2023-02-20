@@ -74,7 +74,67 @@ class ReflexAgent(Agent):
         newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
 
         "*** YOUR CODE HERE ***"
-        return successorGameState.getScore()
+        food_dists = []
+        for x in range(newFood.width):
+            for y in range(newFood.height):
+                if newFood[x][y]:
+                    dist = manhattanDistance(newPos, (x,y))
+                    food_dists.append(dist)
+        # print("food dists: ", food_dists)
+        if len(food_dists) > 0 and min(food_dists) > 0:
+            min_food_dist = min(food_dists)
+            # encourage Pacman to get within eating range
+            avg_side_len = float((newFood.width + newFood.height)/2)
+            # hyp = float(manhattanDistance((0,0), (newFood.width, newFood.height)))
+            # norm_food_dists = float(min_food_dist) / hyp
+            norm_food_dists = float(min_food_dist) / avg_side_len
+        else:
+            # will finish all the food
+            norm_food_dists = -2
+        norm_food_dists = 1 - norm_food_dists
+        # print("food dist: ", norm_food_dists)
+        # print("where food: ", newFood)
+
+        delta_eat = 2 * (currentGameState.getNumFood() - len(food_dists))
+        # print("delta eat: ", delta_eat)
+
+        new_caps_grid = successorGameState.getCapsules()
+        capsule_dists = []
+        for (x,y) in new_caps_grid:
+            dist = manhattanDistance(newPos, (x,y))
+            capsule_dists.append(dist)
+        # print("capsule dists: ", capsule_dists)
+        if len(capsule_dists) > 0 and min(capsule_dists) > 0:
+            min_capsule_dist = min(capsule_dists)
+            # encourage Pacman to get within eating range
+            norm_capsule_dists = float(min_capsule_dist)
+        else:
+            # will finish all the capsule
+            norm_capsule_dists = -2
+        norm_capsule_dists = 1 - norm_capsule_dists
+        delta_eat_capsules = 2 * len(currentGameState.getCapsules()) - len(successorGameState.getCapsules())
+        
+        # Don't think about ghosts if not "threatening"
+        GHOST_DIST_THRESH = 1
+        norm_ghost_dists = 0
+        for ghost in newGhostStates:
+            ghost_dist = manhattanDistance(newPos, ghost.getPosition())
+            if ghost_dist == 0:
+                return -float("inf")
+            elif ghost_dist < GHOST_DIST_THRESH:
+                # mean squared error to "reflex" away from death
+                norm_dist = float(GHOST_DIST_THRESH - ghost_dist) / float(GHOST_DIST_THRESH)
+                norm_ghost_dists += norm_dist**2
+        # encourage get farther from ghosts
+        # mean avg
+        norm_ghost_dists = float(norm_ghost_dists) / float(len(newGhostStates))
+        # print("ghost dist: ", norm_ghost_dists)
+
+        # discourage staying in place
+        val = delta_eat + delta_eat_capsules + norm_food_dists + norm_capsule_dists + norm_ghost_dists
+        if newPos == currentGameState.getPacmanPosition():
+            return val - 0.5
+        return val
 
 def scoreEvaluationFunction(currentGameState):
     """
