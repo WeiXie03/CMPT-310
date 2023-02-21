@@ -192,7 +192,7 @@ class MinimaxAgent(MultiAgentSearchAgent):
         Returns whether or not the game state is a winning state
 
         gameState.isLose():
-        Returns whether or not the game state is a losing state
+        Returns whether5 or not the game state is a losing state
         """
         "*** YOUR CODE HERE ***"
         cur_score = -float("inf")
@@ -244,7 +244,58 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
         Returns the minimax action using self.depth and self.evaluationFunction
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        NUM_AGENTS = gameState.getNumAgents()
+        MAX_DEPTH = self.depth
+
+        def miner(gameState, depth, agent_ind, alpha, beta):
+            actopts = {}
+            for action in gameState.getLegalActions(agent_ind):
+                val = state_val(gameState.generateSuccessor(agent_ind, action), depth, agent_ind+1, alpha, beta)[0]
+                actopts[val] = action
+
+                # Max parent won't let happen
+                if val < alpha:
+                    return (val, action)
+
+                beta = min(beta, val)
+
+            # min(a dict) is the min key
+            return (min(actopts), actopts[min(actopts)])
+        
+        def maxer(gameState, depth, agent_ind, alpha, beta):
+            actopts = {}
+            for action in gameState.getLegalActions(agent_ind):
+                val = state_val(gameState.generateSuccessor(agent_ind, action), depth, agent_ind+1, alpha, beta)[0]
+                actopts[val] = action
+
+                # Min parent won't let happen
+                if val > beta:
+                    return (val, action)
+
+                alpha = max(alpha, val)
+
+            # max(a dict) is the min key
+            return (max(actopts), actopts[max(actopts)])
+        
+        def state_val(gameState, depth, agent_ind, alpha=-float("inf"), beta=float("inf")):
+            if gameState.isWin() or gameState.isLose() or depth == MAX_DEPTH:
+                return (self.evaluationFunction(gameState), "Stop")
+            
+            print("before {}, agent {}".format(depth, agent_ind))
+            # after all agents gone once, Pacman next
+            agent_ind = agent_ind % NUM_AGENTS
+            # increment depth
+            if agent_ind == NUM_AGENTS-1:
+                depth += 1
+            print("after {}, agent {}".format(depth, agent_ind))
+
+            # score is Pacman's score
+            if agent_ind == 0:
+                return maxer(gameState, depth, agent_ind, alpha, beta)
+            else:
+                return miner(gameState, depth, agent_ind, alpha, beta)
+
+        return state_val(gameState, 0, 0)[1]
 
 class ExpectimaxAgent(MultiAgentSearchAgent):
     """
@@ -259,7 +310,14 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
         legal moves.
         """
         "*** YOUR CODE HERE ***"
-        util.raiseNotDefined()
+        # Collect legal moves and successor states
+        legalMoves = gameState.getLegalActions()
+
+        # Choose one of the best actions
+        scores = [self.evaluationFunction(gameState) for action in legalMoves]
+        bestScore = max(scores)
+        bestIndices = [index for index in range(len(scores)) if scores[index] == bestScore]
+        chosenIndex = random.choice(bestIndices) # Pick randomly among the best
 
 def betterEvaluationFunction(currentGameState):
     """
@@ -269,7 +327,77 @@ def betterEvaluationFunction(currentGameState):
     DESCRIPTION: <write something here so we know what you did>
     """
     "*** YOUR CODE HERE ***"
-    util.raiseNotDefined()
+    # Useful information you can extract from a GameState (pacman.py)
+    successorGameState = currentGameState.generatePacmanSuccessor(action)
+    newPos = successorGameState.getPacmanPosition()
+    newFood = successorGameState.getFood()
+    newGhostStates = successorGameState.getGhostStates()
+    newScaredTimes = [ghostState.scaredTimer for ghostState in newGhostStates]
+
+    food_dists = []
+    for x in range(newFood.width):
+        for y in range(newFood.height):
+            if newFood[x][y]:
+                dist = manhattanDistance(newPos, (x,y))
+                food_dists.append(dist)
+    # print("food dists: ", food_dists)
+    if len(food_dists) > 0 and min(food_dists) > 0:
+        min_food_dist = min(food_dists)
+        # encourage Pacman to get within eating range
+        avg_side_len = float((newFood.width + newFood.height)/2)
+        # hyp = float(manhattanDistance((0,0), (newFood.width, newFood.height)))
+        # norm_food_dists = float(min_food_dist) / hyp
+        norm_food_dists = float(min_food_dist) / avg_side_len
+    else:
+        # will finish all the food
+        norm_food_dists = -2
+    norm_food_dists = 1 - norm_food_dists
+    # print("food dist: ", norm_food_dists)
+    # print("where food: ", newFood)
+
+    delta_eat = 2 * (currentGameState.getNumFood() - len(food_dists))
+    # print("delta eat: ", delta_eat)
+
+    new_caps_grid = successorGameState.getCapsules()
+    capsule_dists = []
+    for (x,y) in new_caps_grid:
+        dist = manhattanDistance(newPos, (x,y))
+        capsule_dists.append(dist)
+    # print("capsule dists: ", capsule_dists)
+    if len(capsule_dists) > 0 and min(capsule_dists) > 0:
+        min_capsule_dist = min(capsule_dists)
+        # encourage Pacman to get within eating range
+        norm_capsule_dists = float(min_capsule_dist)
+    else:
+        # will finish all the capsule
+        norm_capsule_dists = -2
+    norm_capsule_dists = 1 - norm_capsule_dists
+    delta_eat_capsules = 2 * len(currentGameState.getCapsules()) - len(successorGameState.getCapsules())
+    
+    # Don't think about ghosts if not "threatening"
+    GHOST_DIST_THRESH = 1
+    norm_ghost_dists = 0
+    for ghost in newGhostStates:
+        ghost_dist = manhattanDistance(newPos, ghost.getPosition())
+        if ghost_dist == 0:
+            return -float("inf")
+        elif ghost_dist < GHOST_DIST_THRESH:
+            # mean squared error to "reflex" away from death
+            if ghost.scaredTimer > 0:
+                norm_dist = float(ghost_dist) / float(GHOST_DIST_THRESH)
+            else:
+                norm_dist = float(GHOST_DIST_THRESH - ghost_dist) / float(GHOST_DIST_THRESH)
+            norm_ghost_dists += norm_dist**2
+    # encourage get farther from ghosts
+    # mean avg
+    norm_ghost_dists = float(norm_ghost_dists) / float(len(newGhostStates))
+    # print("ghost dist: ", norm_ghost_dists)
+
+    # discourage staying in place
+    val = delta_eat + delta_eat_capsules + norm_food_dists + norm_capsule_dists + norm_ghost_dists
+    if newPos == currentGameState.getPacmanPosition():
+        return val - 0.5
+    return val
 
 # Abbreviation
 better = betterEvaluationFunction
