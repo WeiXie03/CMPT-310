@@ -281,13 +281,11 @@ class AlphaBetaAgent(MultiAgentSearchAgent):
             if gameState.isWin() or gameState.isLose() or depth == MAX_DEPTH:
                 return (self.evaluationFunction(gameState), "Stop")
             
-            print("before {}, agent {}".format(depth, agent_ind))
             # after all agents gone once, Pacman next
             agent_ind = agent_ind % NUM_AGENTS
             # increment depth
             if agent_ind == NUM_AGENTS-1:
                 depth += 1
-            print("after {}, agent {}".format(depth, agent_ind))
 
             # score is Pacman's score
             if agent_ind == 0:
@@ -304,20 +302,52 @@ class ExpectimaxAgent(MultiAgentSearchAgent):
 
     def getAction(self, gameState):
         """
-        Returns the expectimax action using self.depth and self.evaluationFunction
-
-        All ghosts should be modeled as choosing uniformly at random from their
-        legal moves.
+        Returns the minimax action using self.depth and self.evaluationFunction
         """
         "*** YOUR CODE HERE ***"
-        # Collect legal moves and successor states
-        legalMoves = gameState.getLegalActions()
+        NUM_AGENTS = gameState.getNumAgents()
+        MAX_DEPTH = self.depth
 
-        # Choose one of the best actions
-        scores = [self.evaluationFunction(gameState) for action in legalMoves]
-        bestScore = max(scores)
-        bestIndices = [index for index in range(len(scores)) if scores[index] == bestScore]
-        chosenIndex = random.choice(bestIndices) # Pick randomly among the best
+        def miner(gameState, depth, agent_ind):
+            val = 0
+            prob = 1.0 / len(gameState.getLegalActions(agent_ind))
+            for action in gameState.getLegalActions(agent_ind):
+                val += state_val(gameState.generateSuccessor(agent_ind, action), depth, agent_ind+1)[0]
+            # uniform probability
+            val *= prob
+            # don't actually need the action
+            # already manifested in EXPECTed value
+            return (val, None)
+        
+        def maxer(gameState, depth, agent_ind):
+            """
+            We ARE Pacman, no uncertainty about which action will take
+            """
+            actopts = {}
+            for action in gameState.getLegalActions(agent_ind):
+                val = state_val(gameState.generateSuccessor(agent_ind, action), depth, agent_ind+1)[0]
+                actopts[val] = action
+
+            # max(a dict) is the min key
+            return (max(actopts), actopts[max(actopts)])
+        
+        def state_val(gameState, depth, agent_ind):
+            if gameState.isWin() or gameState.isLose() or depth == MAX_DEPTH:
+                return (self.evaluationFunction(gameState), "Stop")
+            
+            # after all agents gone once, Pacman next
+            agent_ind = agent_ind % NUM_AGENTS
+            # increment depth
+            if agent_ind == NUM_AGENTS-1:
+                depth += 1
+
+            # score is Pacman's score
+            if agent_ind == 0:
+                return maxer(gameState, depth, agent_ind)
+            else:
+                return miner(gameState, depth, agent_ind)
+
+        return state_val(gameState, 0, 0)[1]
 
 def betterEvaluationFunction(currentGameState):
     """
